@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test the Oracle arbitrate_past_sync functionality with complete escrow, arbitration, and payment flow
+Test the Oracle arbitrate_past_sync functionality with simplified API
 """
 
 import pytest
@@ -8,8 +8,6 @@ import time
 from alkahest_py import (
     EnvTestManager,
     StringObligationData,
-    AttestationFilter,
-    FulfillmentParams,
     ArbitrateOptions,
     MockERC20,
     TrustedOracleArbiterDemandData,
@@ -17,90 +15,165 @@ from alkahest_py import (
 
 @pytest.mark.asyncio
 async def test_arbitrate_past_sync():
-    """Test complete arbitrate_past_sync flow: escrow → fulfillment → arbitration → payment collection"""
+    """Test trivial arbitrate_past_sync: escrow → fulfillment → arbitration → collection"""
     # Setup test environment
     env = EnvTestManager()
-    
+
     # Setup escrow with proper oracle demand data
     mock_erc20 = MockERC20(env.mock_addresses.erc20_a, env.god_wallet_provider)
     mock_erc20.transfer(env.alice, 100)
-    
+
     price = {"address": env.mock_addresses.erc20_a, "value": 100}
     trusted_oracle_arbiter = env.addresses.arbiters_addresses.trusted_oracle_arbiter
-    
+
     # Create proper demand data with Bob as the oracle
-    oracle_client = env.bob_client.oracle
     demand_data = TrustedOracleArbiterDemandData(env.bob, [])
     demand_bytes = demand_data.encode_self()
-    
+
     arbiter = {
         "arbiter": trusted_oracle_arbiter,
         "demand": demand_bytes
     }
-    
+
     expiration = int(time.time()) + 3600
     escrow_receipt = await env.alice_client.erc20.permit_and_buy_with_erc20(
         price, arbiter, expiration
     )
     escrow_uid = escrow_receipt['log']['uid']
-    
+
     # Make fulfillment obligation
     string_client = env.bob_client.string_obligation
     fulfillment_uid = await string_client.do_obligation("good", escrow_uid)
 
-    # Create filter and fulfillment params
-    filter_obj = AttestationFilter(
-        attester=env.addresses.string_obligation_addresses.obligation,
-        recipient=env.bob,
-        schema_uid=None,
-        uid=None,
-        ref_uid=escrow_uid,
-        from_block=0,
-        to_block=None,
-    )
-    
-    obligation_abi = StringObligationData(item="")
-    fulfillment_params = FulfillmentParams(
-        obligation_abi=obligation_abi,
-        filter=filter_obj
-    )
-    
-    options = ArbitrateOptions(
-        require_oracle=True,
-        skip_arbitrated=False,
-        require_request=False,
-        only_new=False
-    )
-    
+    # Request arbitration
+    oracle_client = env.bob_client.oracle
+    await oracle_client.request_arbitration(fulfillment_uid, env.bob)
+
     # Decision function that approves "good" obligations
-    def decision_function(obligation_str):
+    def decision_function(attestation):
+        """Decision function receives attestation and extracts obligation data"""
+        obligation_str = env.bob_client.extract_obligation_data(attestation)
         print(f"Decision function called with obligation: {obligation_str}")
         return obligation_str == "good"
-    
-    # Call arbitrate_past_sync
-    result = await oracle_client.arbitrate_past_sync(
-        fulfillment_params,
-        decision_function,
-        options
-    )
-    
+
+    # Call arbitrate_past_sync with simplified API
+    options = ArbitrateOptions(skip_arbitrated=False, only_new=False)
+    decisions = await oracle_client.arbitrate_past_sync(decision_function, options)
+
     # Verify arbitration found decisions
-    assert not (result.total_count != 1 or result.successful_count != 1), "Expected 1 successful decision, got {result.successful_count}/{result.total_count}"
-    
-    # Verify decision details
-    decision = result.decisions[0]
-    assert not (not decision.decision or decision.obligation_data != "good"), "Decision incorrect: {decision.decision}, obligation: {decision.obligation_data}"
-    
+    assert len(decisions) == 1, f"Expected 1 decision, got {len(decisions)}"
+    assert decisions[0].decision == True, f"Expected decision=True, got {decisions[0].decision}"
+
     # Collect payment
     collection_receipt = await env.bob_client.erc20.collect_escrow(
         escrow_uid, fulfillment_uid
     )
-    
+
     # Verify collection receipt
-    assert not (not collection_receipt or not collection_receipt.startswith('0x')), "Invalid collection receipt: {collection_receipt}"
-    
-    # For compatibility with run_all_tests.py
+    assert collection_receipt is not None, "Collection receipt should not be None"
+    print(f"✅ Arbitrate decision passed. Tx: {collection_receipt}")
+
 @pytest.mark.asyncio
-async def test_fixed_arbitrate_past_sync():
-    """Alias for the main test function to maintain compatibility"""
-    return await test_arbitrate_past_sync()
+async def test_conditional_arbitrate_past():
+    """Test conditional arbitrate_past_sync: approve only 'good' obligations"""
+    # Setup test environment
+    env = EnvTestManager()
+
+    # Setup escrow
+    mock_erc20 = MockERC20(env.mock_addresses.erc20_a, env.god_wallet_provider)
+    mock_erc20.transfer(env.alice, 100)
+
+    price = {"address": env.mock_addresses.erc20_a, "value": 100}
+    trusted_oracle_arbiter = env.addresses.arbiters_addresses.trusted_oracle_arbiter
+
+    demand_data = TrustedOracleArbiterDemandData(env.bob, [])
+    demand_bytes = demand_data.encode_self()
+
+    arbiter = {
+        "arbiter": trusted_oracle_arbiter,
+        "demand": demand_bytes
+    }
+
+    expiration = int(time.time()) + 3600
+    escrow_receipt = await env.alice_client.erc20.permit_and_buy_with_erc20(
+        price, arbiter, expiration
+    )
+    escrow_uid = escrow_receipt['log']['uid']
+
+    # Make two fulfillments: one good, one bad
+    string_client = env.bob_client.string_obligation
+    good_fulfillment = await string_client.do_obligation("good", escrow_uid)
+    bad_fulfillment = await string_client.do_obligation("bad", escrow_uid)
+
+    # Request arbitration for both
+    oracle_client = env.bob_client.oracle
+    await oracle_client.request_arbitration(good_fulfillment, env.bob)
+    await oracle_client.request_arbitration(bad_fulfillment, env.bob)
+
+    # Decision function that approves only "good" obligations
+    def decision_function(attestation):
+        obligation_str = env.bob_client.extract_obligation_data(attestation)
+        return obligation_str == "good"
+
+    # Arbitrate both
+    options = ArbitrateOptions(skip_arbitrated=False, only_new=False)
+    decisions = await oracle_client.arbitrate_past_sync(decision_function, options)
+
+    # Verify we got 2 decisions, only 1 approved
+    assert len(decisions) == 2, f"Expected 2 decisions, got {len(decisions)}"
+    approved = [d for d in decisions if d.decision]
+    assert len(approved) == 1, f"Expected 1 approved decision, got {len(approved)}"
+
+    print(f"✅ Conditional arbitration passed: {len(approved)}/2 approved")
+
+@pytest.mark.asyncio
+async def test_skip_arbitrated():
+    """Test skip_arbitrated option prevents re-arbitrating"""
+    # Setup test environment
+    env = EnvTestManager()
+
+    # Setup escrow
+    mock_erc20 = MockERC20(env.mock_addresses.erc20_a, env.god_wallet_provider)
+    mock_erc20.transfer(env.alice, 100)
+
+    price = {"address": env.mock_addresses.erc20_a, "value": 100}
+    trusted_oracle_arbiter = env.addresses.arbiters_addresses.trusted_oracle_arbiter
+
+    demand_data = TrustedOracleArbiterDemandData(env.bob, [])
+    demand_bytes = demand_data.encode_self()
+
+    arbiter = {
+        "arbiter": trusted_oracle_arbiter,
+        "demand": demand_bytes
+    }
+
+    expiration = int(time.time()) + 3600
+    escrow_receipt = await env.alice_client.erc20.permit_and_buy_with_erc20(
+        price, arbiter, expiration
+    )
+    escrow_uid = escrow_receipt['log']['uid']
+
+    # Make fulfillment
+    string_client = env.bob_client.string_obligation
+    fulfillment_uid = await string_client.do_obligation("good", escrow_uid)
+
+    # Request arbitration
+    oracle_client = env.bob_client.oracle
+    await oracle_client.request_arbitration(fulfillment_uid, env.bob)
+
+    # Decision function
+    def decision_function(attestation):
+        obligation_str = env.bob_client.extract_obligation_data(attestation)
+        return obligation_str == "good"
+
+    # First arbitration
+    options = ArbitrateOptions(skip_arbitrated=False, only_new=False)
+    decisions = await oracle_client.arbitrate_past_sync(decision_function, options)
+    assert len(decisions) == 1, "First arbitration should find 1 decision"
+
+    # Second arbitration with skip_arbitrated should find nothing
+    options_skip = ArbitrateOptions(skip_arbitrated=True, only_new=False)
+    decisions2 = await oracle_client.arbitrate_past_sync(decision_function, options_skip)
+    assert len(decisions2) == 0, "Second arbitration with skip_arbitrated should find 0 decisions"
+
+    print("✅ Skip arbitrated option works correctly")
