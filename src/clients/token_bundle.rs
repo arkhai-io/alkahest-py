@@ -1,4 +1,4 @@
-use alkahest_rs::clients::token_bundle;
+use alkahest_rs::extensions::TokenBundleModule;
 use pyo3::{pyclass, pymethods, PyResult};
 
 use crate::{
@@ -10,11 +10,11 @@ use crate::{
 #[pyclass]
 #[derive(Clone)]
 pub struct TokenBundleClient {
-    inner: token_bundle::TokenBundleClient,
+    inner: TokenBundleModule,
 }
 
 impl TokenBundleClient {
-    pub fn new(inner: token_bundle::TokenBundleClient) -> Self {
+    pub fn new(inner: TokenBundleModule) -> Self {
         Self { inner }
     }
 }

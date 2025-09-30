@@ -1,4 +1,4 @@
-use alkahest_rs::clients::erc20;
+use alkahest_rs::extensions::Erc20Module;
 use pyo3::{pyclass, pymethods, PyResult};
 
 use crate::{
@@ -12,11 +12,11 @@ use crate::{
 #[pyclass]
 #[derive(Clone)]
 pub struct Erc20Client {
-    inner: erc20::Erc20Client,
+    inner: Erc20Module,
 }
 
 impl Erc20Client {
-    pub fn new(inner: erc20::Erc20Client) -> Self {
+    pub fn new(inner: Erc20Module) -> Self {
         Self { inner }
     }
 }
@@ -640,7 +640,7 @@ impl PyERC20EscrowObligationData {
     pub fn decode(obligation_data: Vec<u8>) -> eyre::Result<PyERC20EscrowObligationData> {
         use alloy::primitives::Bytes;
         let bytes = Bytes::from(obligation_data);
-        let decoded = alkahest_rs::clients::erc20::Erc20Client::decode_escrow_obligation(&bytes)?;
+        let decoded = alkahest_rs::extensions::Erc20Module::decode_escrow_obligation(&bytes)?;
         Ok(decoded.into())
     }
 
@@ -739,7 +739,7 @@ impl PyERC20PaymentObligationData {
     pub fn decode(obligation_data: Vec<u8>) -> eyre::Result<PyERC20PaymentObligationData> {
         use alloy::primitives::Bytes;
         let bytes = Bytes::from(obligation_data);
-        let decoded = alkahest_rs::clients::erc20::Erc20Client::decode_payment_obligation(&bytes)?;
+        let decoded = alkahest_rs::extensions::Erc20Module::decode_payment_obligation(&bytes)?;
         Ok(decoded.into())
     }
 

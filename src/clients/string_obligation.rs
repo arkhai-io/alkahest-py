@@ -1,4 +1,4 @@
-use alkahest_rs::clients::string_obligation;
+use alkahest_rs::extensions::StringObligationModule;
 use alloy::primitives::FixedBytes;
 use pyo3::prelude::PyAnyMethods;
 use pyo3::{pyclass, pymethods, types::PyAny, Bound, PyResult};
@@ -19,11 +19,11 @@ fn python_to_json_string(py_obj: &Bound<'_, PyAny>) -> eyre::Result<String> {
 #[pyclass]
 #[derive(Clone)]
 pub struct StringObligationClient {
-    inner: string_obligation::StringObligationClient,
+    inner: StringObligationModule,
 }
 
 impl StringObligationClient {
-    pub fn new(inner: string_obligation::StringObligationClient) -> Self {
+    pub fn new(inner: StringObligationModule) -> Self {
         Self { inner }
     }
 }
@@ -35,7 +35,7 @@ impl StringObligationClient {
         py: pyo3::Python<'py>,
         uid: String,
     ) -> PyResult<pyo3::Bound<'py, pyo3::PyAny>> {
-        let inner: string_obligation::StringObligationClient = self.inner.clone();
+        let inner = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let uid: FixedBytes<32> = uid.parse().map_err(map_parse_to_pyerr)?;
             let obligation = inner.get_obligation(uid).await.map_err(map_eyre_to_pyerr)?;
@@ -145,7 +145,7 @@ impl PyStringObligationData {
         use alloy::primitives::Bytes;
         let bytes = Bytes::from(obligation_data);
         let decoded =
-            alkahest_rs::clients::string_obligation::StringObligationClient::decode(&bytes)
+            alkahest_rs::extensions::StringObligationModule::decode(&bytes)
                 .map_err(map_eyre_to_pyerr)?;
         Ok(decoded.into())
     }

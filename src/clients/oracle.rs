@@ -524,14 +524,15 @@ impl PyTrustedOracleArbiterDemandData {
 
     #[staticmethod]
     pub fn encode(demand_data: &PyTrustedOracleArbiterDemandData) -> eyre::Result<Vec<u8>> {
-        use alkahest_rs::clients::arbiters::{ArbitersClient, TrustedOracleArbiter};
+        use alkahest_rs::extensions::ArbitersModule;
+        use alkahest_rs::clients::arbiters::TrustedOracleArbiter;
         use alloy::primitives::{Address, Bytes};
 
         let oracle: Address = demand_data.oracle.parse()?;
         let data = Bytes::from(demand_data.data.clone());
 
         let rust_demand_data = TrustedOracleArbiter::DemandData { oracle, data };
-        let encoded = ArbitersClient::encode_trusted_oracle_arbiter_demand(&rust_demand_data);
+        let encoded = ArbitersModule::encode_trusted_oracle_arbiter_demand(&rust_demand_data);
         Ok(encoded.to_vec())
     }
 

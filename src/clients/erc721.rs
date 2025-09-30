@@ -1,4 +1,4 @@
-use alkahest_rs::clients::erc721;
+use alkahest_rs::extensions::Erc721Module;
 use alloy::primitives::Address;
 use pyo3::{pyclass, pymethods, PyResult};
 
@@ -13,11 +13,11 @@ use crate::{
 #[pyclass]
 #[derive(Clone)]
 pub struct Erc721Client {
-    inner: erc721::Erc721Client,
+    inner: Erc721Module,
 }
 
 impl Erc721Client {
-    pub fn new(inner: erc721::Erc721Client) -> Self {
+    pub fn new(inner: Erc721Module) -> Self {
         Self { inner }
     }
 }
@@ -407,7 +407,7 @@ impl PyERC721EscrowObligationData {
     pub fn decode(obligation_data: Vec<u8>) -> PyResult<PyERC721EscrowObligationData> {
         use alloy::primitives::Bytes;
         let bytes = Bytes::from(obligation_data);
-        let decoded = alkahest_rs::clients::erc721::Erc721Client::decode_escrow_obligation(&bytes)
+        let decoded = alkahest_rs::extensions::Erc721Module::decode_escrow_obligation(&bytes)
             .map_err(map_eyre_to_pyerr)?;
         Ok(decoded.into())
     }
@@ -486,7 +486,7 @@ impl PyERC721PaymentObligationData {
     pub fn decode(obligation_data: Vec<u8>) -> PyResult<PyERC721PaymentObligationData> {
         use alloy::primitives::Bytes;
         let bytes = Bytes::from(obligation_data);
-        let decoded = alkahest_rs::clients::erc721::Erc721Client::decode_payment_obligation(&bytes)
+        let decoded = alkahest_rs::extensions::Erc721Module::decode_payment_obligation(&bytes)
             .map_err(map_eyre_to_pyerr)?;
         Ok(decoded.into())
     }
