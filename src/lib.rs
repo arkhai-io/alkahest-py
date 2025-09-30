@@ -39,9 +39,8 @@ use crate::{
         erc20::{PyERC20EscrowObligationData, PyERC20PaymentObligationData},
         erc721::{PyERC721EscrowObligationData, PyERC721PaymentObligationData},
         oracle::{
-            PyArbitrateOptions, PyArbitrationResult, PyAttestationFilter, PyDecision,
-            PyEscrowArbitrationResult, PyEscrowParams, PyFulfillmentParams, PyOracleAddresses,
-            PyOracleAttestation, PySubscriptionResult, PyTrustedOracleArbiterDemandData,
+            PyArbitrateOptions, PyDecision, PyListenResult, PyOracleAddresses,
+            PyOracleAttestation, PyTrustedOracleArbiterDemandData,
         },
         string_obligation::PyStringObligationData,
     },
@@ -816,16 +815,11 @@ fn alkahest_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<StringObligationClient>()?;
     m.add_class::<OracleClient>()?;
     m.add_class::<PyOracleAddresses>()?;
-    m.add_class::<PyAttestationFilter>()?;
     m.add_class::<PyOracleAttestation>()?;
     m.add_class::<PyDecision>()?;
-    m.add_class::<PyFulfillmentParams>()?;
     m.add_class::<PyArbitrateOptions>()?;
-    m.add_class::<PyArbitrationResult>()?;
-    m.add_class::<PySubscriptionResult>()?;
+    m.add_class::<PyListenResult>()?;
     m.add_class::<PyTrustedOracleArbiterDemandData>()?;
-    m.add_class::<PyEscrowParams>()?;
-    m.add_class::<PyEscrowArbitrationResult>()?;
     m.add_class::<EnvTestManager>()?;
     m.add_class::<PyWalletProvider>()?;
     m.add_class::<PyMockERC20>()?;
