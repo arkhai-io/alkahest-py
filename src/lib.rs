@@ -77,7 +77,7 @@ pub struct PyAlkahestClient {
 }
 
 impl PyAlkahestClient {
-    pub fn from_client(client: AlkahestClient) -> Self {
+    pub fn from_client(client: alkahest_rs::DefaultAlkahestClient) -> Self {
         Self {
             inner: std::sync::Arc::new(client.clone()),
             private_key: None, // Not available when creating from existing client
@@ -147,8 +147,8 @@ impl PyAlkahestClient {
         let runtime = std::sync::Arc::new(Runtime::new()?);
 
         // Since new is async, we must block_on it
-        let client: alkahest_rs::AlkahestClient = runtime.clone().block_on(async {
-            alkahest_rs::AlkahestClient::new(signer.clone(), rpc_url.clone(), address_config).await
+        let client: alkahest_rs::DefaultAlkahestClient = runtime.clone().block_on(async {
+            alkahest_rs::AlkahestClient::with_base_extensions(signer.clone(), rpc_url.clone(), address_config).await
         })?;
 
         let client = Self {

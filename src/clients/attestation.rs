@@ -185,15 +185,16 @@ impl AttestationClient {
     pub(crate) fn get_attestation<'py>(
         &self,
         py: pyo3::Python<'py>,
-        uid: FixedBytes<32>,
+        uid: String,
     ) -> PyResult<pyo3::Bound<'py, pyo3::PyAny>> {
         let inner = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let uid: FixedBytes<32> = uid.parse().map_err(map_parse_to_pyerr)?;
             let attestation = inner
                 .get_attestation(uid)
                 .await
                 .map_err(map_eyre_to_pyerr)?;
-            Ok(attestation)
+            Ok(crate::contract::PyAttestation::from(attestation))
         })
     }
 }

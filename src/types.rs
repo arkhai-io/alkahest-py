@@ -208,15 +208,15 @@ impl TryFrom<DefaultExtensionConfig> for alkahest_rs::DefaultExtensionConfig {
 
     fn try_from(value: DefaultExtensionConfig) -> PyResult<Self> {
         Ok(Self {
-            erc20_addresses: value.erc20_addresses.and_then(|x| x.try_into().ok()),
-            erc721_addresses: value.erc721_addresses.and_then(|x| x.try_into().ok()),
-            erc1155_addresses: value.erc1155_addresses.and_then(|x| x.try_into().ok()),
-            token_bundle_addresses: value.token_bundle_addresses.and_then(|x| x.try_into().ok()),
-            attestation_addresses: value.attestation_addresses.and_then(|x| x.try_into().ok()),
-            arbiters_addresses: value.arbiters_addresses.and_then(|x| x.try_into().ok()),
+            erc20_addresses: value.erc20_addresses.and_then(|x| x.try_into().ok()).unwrap_or_default(),
+            erc721_addresses: value.erc721_addresses.and_then(|x| x.try_into().ok()).unwrap_or_default(),
+            erc1155_addresses: value.erc1155_addresses.and_then(|x| x.try_into().ok()).unwrap_or_default(),
+            token_bundle_addresses: value.token_bundle_addresses.and_then(|x| x.try_into().ok()).unwrap_or_default(),
+            attestation_addresses: value.attestation_addresses.and_then(|x| x.try_into().ok()).unwrap_or_default(),
+            arbiters_addresses: value.arbiters_addresses.and_then(|x| x.try_into().ok()).unwrap_or_default(),
             string_obligation_addresses: value
                 .string_obligation_addresses
-                .and_then(|x| x.try_into().ok()),
+                .and_then(|x| x.try_into().ok()).unwrap_or_default(),
         })
     }
 }
@@ -551,28 +551,13 @@ pub struct PyDefaultExtensionConfig {
 impl From<&alkahest_rs::DefaultExtensionConfig> for PyDefaultExtensionConfig {
     fn from(data: &alkahest_rs::DefaultExtensionConfig) -> Self {
         Self {
-            erc20_addresses: data.erc20_addresses.as_ref().map(PyErc20Addresses::from),
-            erc721_addresses: data.erc721_addresses.as_ref().map(PyErc721Addresses::from),
-            erc1155_addresses: data
-                .erc1155_addresses
-                .as_ref()
-                .map(PyErc1155Addresses::from),
-            token_bundle_addresses: data
-                .token_bundle_addresses
-                .as_ref()
-                .map(PyTokenBundleAddresses::from),
-            attestation_addresses: data
-                .attestation_addresses
-                .as_ref()
-                .map(PyAttestationAddresses::from),
-            arbiters_addresses: data
-                .arbiters_addresses
-                .as_ref()
-                .map(PyArbitersAddresses::from),
-            string_obligation_addresses: data
-                .string_obligation_addresses
-                .as_ref()
-                .map(PyStringObligationAddresses::from),
+            erc20_addresses: Some(PyErc20Addresses::from(&data.erc20_addresses)),
+            erc721_addresses: Some(PyErc721Addresses::from(&data.erc721_addresses)),
+            erc1155_addresses: Some(PyErc1155Addresses::from(&data.erc1155_addresses)),
+            token_bundle_addresses: Some(PyTokenBundleAddresses::from(&data.token_bundle_addresses)),
+            attestation_addresses: Some(PyAttestationAddresses::from(&data.attestation_addresses)),
+            arbiters_addresses: Some(PyArbitersAddresses::from(&data.arbiters_addresses)),
+            string_obligation_addresses: Some(PyStringObligationAddresses::from(&data.string_obligation_addresses)),
         }
     }
 }
