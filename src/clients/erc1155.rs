@@ -1,4 +1,4 @@
-use alkahest_rs::clients::erc1155;
+use alkahest_rs::extensions::Erc1155Module;
 use alloy::primitives::Address;
 use pyo3::{pyclass, pymethods, PyResult};
 
@@ -13,11 +13,11 @@ use crate::{
 #[pyclass]
 #[derive(Clone)]
 pub struct Erc1155Client {
-    inner: erc1155::Erc1155Client,
+    inner: Erc1155Module,
 }
 
 impl Erc1155Client {
-    pub fn new(inner: erc1155::Erc1155Client) -> Self {
+    pub fn new(inner: Erc1155Module) -> Self {
         Self { inner }
     }
 }
@@ -391,7 +391,7 @@ impl PyERC1155EscrowObligationData {
         use alloy::primitives::Bytes;
         let bytes = Bytes::from(obligation_data);
         let decoded =
-            alkahest_rs::clients::erc1155::Erc1155Client::decode_escrow_obligation(&bytes)
+            alkahest_rs::extensions::Erc1155Module::decode_escrow_obligation(&bytes)
                 .map_err(map_eyre_to_pyerr)?;
         Ok(decoded.into())
     }
@@ -477,7 +477,7 @@ impl PyERC1155PaymentObligationData {
         use alloy::primitives::Bytes;
         let bytes = Bytes::from(obligation_data);
         let decoded =
-            alkahest_rs::clients::erc1155::Erc1155Client::decode_payment_obligation(&bytes)
+            alkahest_rs::extensions::Erc1155Module::decode_payment_obligation(&bytes)
                 .map_err(map_eyre_to_pyerr)?;
         Ok(decoded.into())
     }

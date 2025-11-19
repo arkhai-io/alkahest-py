@@ -39,9 +39,8 @@ use crate::{
         erc20::{PyERC20EscrowObligationData, PyERC20PaymentObligationData},
         erc721::{PyERC721EscrowObligationData, PyERC721PaymentObligationData},
         oracle::{
-            PyArbitrateOptions, PyArbitrationResult, PyAttestationFilter, PyDecision,
-            PyEscrowArbitrationResult, PyEscrowParams, PyFulfillmentParams, PyOracleAddresses,
-            PyOracleAttestation, PySubscriptionResult, PyTrustedOracleArbiterDemandData,
+            PyArbitrateOptions, PyDecision, PyListenResult, PyOracleAddresses,
+            PyOracleAttestation, PyTrustedOracleArbiterDemandData,
         },
         string_obligation::PyStringObligationData,
     },
@@ -78,7 +77,7 @@ pub struct PyAlkahestClient {
 }
 
 impl PyAlkahestClient {
-    pub fn from_client(client: AlkahestClient) -> Self {
+    pub fn from_client(client: alkahest_rs::DefaultAlkahestClient) -> Self {
         Self {
             inner: std::sync::Arc::new(client.clone()),
             private_key: None, // Not available when creating from existing client
@@ -148,8 +147,8 @@ impl PyAlkahestClient {
         let runtime = std::sync::Arc::new(Runtime::new()?);
 
         // Since new is async, we must block_on it
-        let client: alkahest_rs::AlkahestClient = runtime.clone().block_on(async {
-            alkahest_rs::AlkahestClient::new(signer.clone(), rpc_url.clone(), address_config).await
+        let client: alkahest_rs::DefaultAlkahestClient = runtime.clone().block_on(async {
+            alkahest_rs::AlkahestClient::with_base_extensions(signer.clone(), rpc_url.clone(), address_config).await
         })?;
 
         let client = Self {
@@ -172,492 +171,6 @@ impl PyAlkahestClient {
         };
 
         Ok(client)
-    }
-
-    /// Create a PyAlkahestClient with no extensions
-    #[staticmethod]
-    #[pyo3(signature = (private_key, rpc_url))]
-    pub fn with_no_extensions(private_key: String, rpc_url: String) -> PyResult<Self> {
-        // Convert private_key String to LocalSigner
-        let signer = PrivateKeySigner::from_str(&private_key)
-            .map_err(|e| eyre::eyre!("Failed to parse private key: {}", e))?;
-
-        // Create a shared runtime
-        let runtime = std::sync::Arc::new(Runtime::new()?);
-
-        // Create client with NoExtension
-        let client = runtime.clone().block_on(async {
-            alkahest_rs::AlkahestClient::<NoExtension>::new(signer.clone(), rpc_url.clone(), None)
-                .await
-        })?;
-
-        let py_client = Self {
-            inner: std::sync::Arc::new(client),
-            private_key: Some(private_key.clone()),
-            rpc_url: Some(rpc_url.clone()),
-            erc20: None,
-            erc721: None,
-            erc1155: None,
-            token_bundle: None,
-            attestation: None,
-            string_obligation: None,
-            oracle: None,
-        };
-
-        Ok(py_client)
-    }
-
-    /// Add ERC20 extension to the client and return a new client instance with that extension
-    #[pyo3(signature = (config=None))]
-    pub fn with_erc20<'py>(
-        &self,
-        py: Python<'py>,
-        config: Option<crate::types::Erc20Addresses>,
-    ) -> PyResult<pyo3::Bound<'py, PyAny>> {
-        let inner = self.inner.clone();
-        let private_key = self.private_key.clone();
-        let rpc_url = self.rpc_url.clone();
-        let erc721 = self.erc721.clone();
-        let erc1155 = self.erc1155.clone();
-        let token_bundle = self.token_bundle.clone();
-        let attestation = self.attestation.clone();
-        let string_obligation = self.string_obligation.clone();
-        let oracle = self.oracle.clone();
-        let existing_erc20 = self.erc20.clone();
-
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            // If we already have ERC20 extension, just return a copy with the same extension
-            if let Some(erc20_client) = existing_erc20 {
-                let new_client = Self {
-                    inner,
-                    private_key,
-                    rpc_url,
-                    erc20: Some(erc20_client),
-                    erc721,
-                    erc1155,
-                    token_bundle,
-                    attestation,
-                    string_obligation,
-                    oracle,
-                };
-                return Ok(new_client);
-            }
-
-            // Create ERC20 extension using stored connection info
-            if let (Some(pk), Some(url)) = (private_key, rpc_url) {
-                // Create independent ERC20 client using init_with_config
-                let signer = PrivateKeySigner::from_str(&pk).map_err(|e| {
-                    pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to parse private key: {}",
-                        e
-                    ))
-                })?;
-
-                let addresses: Option<Erc20Addresses> =
-                    config.and_then(|addr| addr.try_into().ok());
-                let erc20_extension = Erc20Module::init_with_config(signer, url.clone(), addresses)
-                    .await
-                    .map_err(|e| {
-                        pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                            "Failed to create ERC20 extension: {}",
-                            e
-                        ))
-                    })?;
-
-                let new_client = Self {
-                    inner,
-                    private_key: Some(pk),
-                    rpc_url: Some(url),
-                    erc20: Some(Erc20Client::new(erc20_extension.client)),
-                    erc721,
-                    erc1155,
-                    token_bundle,
-                    attestation,
-                    string_obligation,
-                    oracle,
-                };
-                return Ok(new_client);
-            }
-
-            // If no connection info available, return error
-            Err(pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                "Cannot add ERC20 extension: no connection information available. Use AlkahestClient.with_no_extensions() to create a client with stored connection info.",
-            ))
-        })
-    }
-
-    /// Add ERC721 extension to the client and return a new client instance with that extension
-    #[pyo3(signature = (config=None))]
-    pub fn with_erc721<'py>(
-        &self,
-        py: Python<'py>,
-        config: Option<crate::types::Erc721Addresses>,
-    ) -> PyResult<pyo3::Bound<'py, PyAny>> {
-        let inner = self.inner.clone();
-        let private_key = self.private_key.clone();
-        let rpc_url = self.rpc_url.clone();
-        let erc20 = self.erc20.clone();
-        let erc1155 = self.erc1155.clone();
-        let token_bundle = self.token_bundle.clone();
-        let attestation = self.attestation.clone();
-        let string_obligation = self.string_obligation.clone();
-        let oracle = self.oracle.clone();
-
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            // Create ERC721 extension using stored connection info
-            if let (Some(pk), Some(url)) = (private_key, rpc_url) {
-                // Create independent ERC721 client using init_with_config
-                let signer = PrivateKeySigner::from_str(&pk).map_err(|e| {
-                    pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to parse private key: {}",
-                        e
-                    ))
-                })?;
-
-                let addresses: Option<Erc721Addresses> =
-                    config.and_then(|addr| addr.try_into().ok());
-                let erc721_extension =
-                    Erc721Module::init_with_config(signer, url.clone(), addresses)
-                        .await
-                        .map_err(|e| {
-                            pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                                "Failed to create ERC721 extension: {}",
-                                e
-                            ))
-                        })?;
-
-                let new_client = Self {
-                    inner,
-                    private_key: Some(pk),
-                    rpc_url: Some(url),
-                    erc20,
-                    erc721: Some(Erc721Client::new(erc721_extension.client)),
-                    erc1155,
-                    token_bundle,
-                    attestation,
-                    string_obligation,
-                    oracle,
-                };
-                return Ok(new_client);
-            }
-
-            // If no connection info available, return error
-            Err(pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                "Cannot add ERC721 extension: no connection information available. Use AlkahestClient.with_no_extensions() to create a client with stored connection info.",
-            ))
-        })
-    }
-
-    /// Add ERC1155 extension to the client and return a new client instance with that extension
-    #[pyo3(signature = (config=None))]
-    pub fn with_erc1155<'py>(
-        &self,
-        py: Python<'py>,
-        config: Option<crate::types::Erc1155Addresses>,
-    ) -> PyResult<pyo3::Bound<'py, PyAny>> {
-        let inner = self.inner.clone();
-        let private_key = self.private_key.clone();
-        let rpc_url = self.rpc_url.clone();
-        let erc20 = self.erc20.clone();
-        let erc721 = self.erc721.clone();
-        let token_bundle = self.token_bundle.clone();
-        let attestation = self.attestation.clone();
-        let string_obligation = self.string_obligation.clone();
-        let oracle = self.oracle.clone();
-
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            // Create ERC1155 extension using stored connection info
-            if let (Some(pk), Some(url)) = (private_key, rpc_url) {
-                // Create independent ERC1155 client using init_with_config
-                let signer = PrivateKeySigner::from_str(&pk).map_err(|e| {
-                    pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to parse private key: {}",
-                        e
-                    ))
-                })?;
-
-                let addresses: Option<Erc1155Addresses> =
-                    config.and_then(|addr| addr.try_into().ok());
-                let erc1155_extension =
-                    Erc1155Module::init_with_config(signer, url.clone(), addresses)
-                        .await
-                        .map_err(|e| {
-                            pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                                "Failed to create ERC1155 extension: {}",
-                                e
-                            ))
-                        })?;
-
-                let new_client = Self {
-                    inner,
-                    private_key: Some(pk),
-                    rpc_url: Some(url),
-                    erc20,
-                    erc721,
-                    erc1155: Some(Erc1155Client::new(erc1155_extension.client)),
-                    token_bundle,
-                    attestation,
-                    string_obligation,
-                    oracle,
-                };
-                return Ok(new_client);
-            }
-
-            // If no connection info available, return error
-            Err(pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                "Cannot add ERC1155 extension: no connection information available. Use AlkahestClient.with_no_extensions() to create a client with stored connection info.",
-            ))
-        })
-    }
-
-    /// Add TokenBundle extension to the client and return a new client instance with that extension
-    #[pyo3(signature = (config=None))]
-    pub fn with_token_bundle<'py>(
-        &self,
-        py: Python<'py>,
-        config: Option<crate::types::TokenBundleAddresses>,
-    ) -> PyResult<pyo3::Bound<'py, PyAny>> {
-        let inner = self.inner.clone();
-        let private_key = self.private_key.clone();
-        let rpc_url = self.rpc_url.clone();
-        let erc20 = self.erc20.clone();
-        let erc721 = self.erc721.clone();
-        let erc1155 = self.erc1155.clone();
-        let attestation = self.attestation.clone();
-        let string_obligation = self.string_obligation.clone();
-        let oracle = self.oracle.clone();
-
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            // Create TokenBundle extension using stored connection info
-            if let (Some(pk), Some(url)) = (private_key, rpc_url) {
-                // Create independent TokenBundle client using init_with_config
-                let signer = PrivateKeySigner::from_str(&pk).map_err(|e| {
-                    pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to parse private key: {}",
-                        e
-                    ))
-                })?;
-
-                let addresses: Option<TokenBundleAddresses> =
-                    config.and_then(|addr| addr.try_into().ok());
-                let token_bundle_extension =
-                    TokenBundleModule::init_with_config(signer, url.clone(), addresses)
-                        .await
-                        .map_err(|e| {
-                            pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                                "Failed to create TokenBundle extension: {}",
-                                e
-                            ))
-                        })?;
-
-                let new_client = Self {
-                    inner,
-                    private_key: Some(pk),
-                    rpc_url: Some(url),
-                    erc20,
-                    erc721,
-                    erc1155,
-                    token_bundle: Some(TokenBundleClient::new(token_bundle_extension.client)),
-                    attestation,
-                    string_obligation,
-                    oracle,
-                };
-                return Ok(new_client);
-            }
-
-            // If no connection info available, return error
-            Err(pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                "Cannot add TokenBundle extension: no connection information available. Use AlkahestClient.with_no_extensions() to create a client with stored connection info.",
-            ))
-        })
-    }
-
-    /// Add Attestation extension to the client and return a new client instance with that extension
-    #[pyo3(signature = (config=None))]
-    pub fn with_attestation<'py>(
-        &self,
-        py: Python<'py>,
-        config: Option<crate::types::AttestationAddresses>,
-    ) -> PyResult<pyo3::Bound<'py, PyAny>> {
-        let inner = self.inner.clone();
-        let private_key = self.private_key.clone();
-        let rpc_url = self.rpc_url.clone();
-        let erc20 = self.erc20.clone();
-        let erc721 = self.erc721.clone();
-        let erc1155 = self.erc1155.clone();
-        let token_bundle = self.token_bundle.clone();
-        let string_obligation = self.string_obligation.clone();
-        let oracle = self.oracle.clone();
-
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            // Create Attestation extension using stored connection info
-            if let (Some(pk), Some(url)) = (private_key, rpc_url) {
-                // Create independent Attestation client using init_with_config
-                let signer = PrivateKeySigner::from_str(&pk).map_err(|e| {
-                    pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to parse private key: {}",
-                        e
-                    ))
-                })?;
-
-                let addresses: Option<AttestationAddresses> =
-                    config.and_then(|addr| addr.try_into().ok());
-                let attestation_extension =
-                    AttestationModule::init_with_config(signer, url.clone(), addresses)
-                        .await
-                        .map_err(|e| {
-                            pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                                "Failed to create Attestation extension: {}",
-                                e
-                            ))
-                        })?;
-
-                let new_client = Self {
-                    inner,
-                    private_key: Some(pk),
-                    rpc_url: Some(url),
-                    erc20,
-                    erc721,
-                    erc1155,
-                    token_bundle,
-                    attestation: Some(AttestationClient::new(attestation_extension.client)),
-                    string_obligation,
-                    oracle,
-                };
-                return Ok(new_client);
-            }
-
-            // If no connection info available, return error
-            Err(pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                "Cannot add Attestation extension: no connection information available. Use AlkahestClient.with_no_extensions() to create a client with stored connection info.",
-            ))
-        })
-    }
-
-    /// Add StringObligation extension to the client and return a new client instance with that extension
-    #[pyo3(signature = (config=None))]
-    pub fn with_string_obligation<'py>(
-        &self,
-        py: Python<'py>,
-        config: Option<crate::types::StringObligationAddresses>,
-    ) -> PyResult<pyo3::Bound<'py, PyAny>> {
-        let inner = self.inner.clone();
-        let private_key = self.private_key.clone();
-        let rpc_url = self.rpc_url.clone();
-        let erc20 = self.erc20.clone();
-        let erc721 = self.erc721.clone();
-        let erc1155 = self.erc1155.clone();
-        let token_bundle = self.token_bundle.clone();
-        let attestation = self.attestation.clone();
-        let oracle = self.oracle.clone();
-
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            // Create StringObligation extension using stored connection info
-            if let (Some(pk), Some(url)) = (private_key, rpc_url) {
-                // Create independent StringObligation client using init_with_config
-                let signer = PrivateKeySigner::from_str(&pk).map_err(|e| {
-                    pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to parse private key: {}",
-                        e
-                    ))
-                })?;
-
-                let addresses: Option<StringObligationAddresses> =
-                    config.and_then(|addr| addr.try_into().ok());
-                let string_obligation_extension =
-                    StringObligationModule::init_with_config(signer, url.clone(), addresses)
-                        .await
-                        .map_err(|e| {
-                            pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                                "Failed to create StringObligation extension: {}",
-                                e
-                            ))
-                        })?;
-
-                let new_client = Self {
-                    inner,
-                    private_key: Some(pk),
-                    rpc_url: Some(url),
-                    erc20,
-                    erc721,
-                    erc1155,
-                    token_bundle,
-                    attestation,
-                    string_obligation: Some(StringObligationClient::new(
-                        string_obligation_extension.client,
-                    )),
-                    oracle,
-                };
-                return Ok(new_client);
-            }
-
-            // If no connection info available, return error
-            Err(pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                "Cannot add StringObligation extension: no connection information available. Use AlkahestClient.with_no_extensions() to create a client with stored connection info.",
-            ))
-        })
-    }
-
-    /// Add Oracle extension to the client and return a new client instance with that extension
-    #[pyo3(signature = (config=None))]
-    pub fn with_oracle<'py>(
-        &self,
-        py: Python<'py>,
-        config: Option<crate::types::OracleAddresses>,
-    ) -> PyResult<pyo3::Bound<'py, PyAny>> {
-        let inner = self.inner.clone();
-        let private_key = self.private_key.clone();
-        let rpc_url = self.rpc_url.clone();
-        let erc20 = self.erc20.clone();
-        let erc721 = self.erc721.clone();
-        let erc1155 = self.erc1155.clone();
-        let token_bundle = self.token_bundle.clone();
-        let attestation = self.attestation.clone();
-        let string_obligation = self.string_obligation.clone();
-
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            // Create Oracle extension using stored connection info
-            if let (Some(pk), Some(url)) = (private_key, rpc_url) {
-                // Create independent Oracle client using init_with_config
-                let signer = PrivateKeySigner::from_str(&pk).map_err(|e| {
-                    pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Failed to parse private key: {}",
-                        e
-                    ))
-                })?;
-
-                let addresses: Option<OracleAddresses> =
-                    config.and_then(|addr| addr.try_into().ok());
-                let oracle_extension =
-                    OracleModule::init_with_config(signer, url.clone(), addresses)
-                        .await
-                        .map_err(|e| {
-                            pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                                "Failed to create Oracle extension: {}",
-                                e
-                            ))
-                        })?;
-
-                let new_client = Self {
-                    inner,
-                    private_key: Some(pk),
-                    rpc_url: Some(url),
-                    erc20,
-                    erc721,
-                    erc1155,
-                    token_bundle,
-                    attestation,
-                    string_obligation,
-                    oracle: Some(OracleClient::new(oracle_extension.client)),
-                };
-                return Ok(new_client);
-            }
-
-            // If no connection info available, return error
-            Err(pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                "Cannot add Oracle extension: no connection information available. Use AlkahestClient.with_no_extensions() to create a client with stored connection info.",
-            ))
-        })
     }
 
     /// List available extensions
@@ -750,6 +263,122 @@ impl PyAlkahestClient {
         })
     }
 
+    /// Extract obligation data from a fulfillment attestation
+    ///
+    /// Returns the string obligation data from the attestation
+    pub fn extract_obligation_data(&self, attestation: &crate::clients::oracle::PyOracleAttestation) -> PyResult<String> {
+        use alkahest_rs::contracts::StringObligation;
+        use alloy::hex;
+        use alloy::sol_types::SolType;
+
+        let data_bytes = hex::decode(attestation.data.strip_prefix("0x").unwrap_or(&attestation.data))
+            .map_err(|e| pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to decode data hex: {}", e)))?;
+
+        let obligation_data = StringObligation::ObligationData::abi_decode(&data_bytes)
+            .map_err(|e| pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to decode obligation data: {}", e)))?;
+
+        Ok(obligation_data.item)
+    }
+
+    /// Get the escrow attestation that this fulfillment references via refUID
+    pub fn get_escrow_attestation<'py>(
+        &self,
+        py: Python<'py>,
+        fulfillment: &crate::clients::oracle::PyOracleAttestation,
+    ) -> PyResult<pyo3::Bound<'py, PyAny>> {
+        let attestation_client = self.attestation.clone().ok_or_else(|| {
+            pyo3::PyErr::new::<pyo3::exceptions::PyAttributeError, _>(
+                "Attestation extension is not available in this client",
+            )
+        })?;
+
+        let ref_uid: FixedBytes<32> = fulfillment.ref_uid.parse().map_err(|e| {
+            pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Parse error: {}", e))
+        })?;
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let escrow: alkahest_rs::contracts::IEAS::Attestation = attestation_client
+                .inner
+                .get_attestation(ref_uid)
+                .await
+                .map_err(|e| pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
+            Ok(crate::clients::oracle::PyOracleAttestation::from(&escrow))
+        })
+    }
+
+    /// Extract demand data from an escrow attestation
+    pub fn extract_demand_data(&self, escrow_attestation: &crate::clients::oracle::PyOracleAttestation) -> PyResult<crate::clients::oracle::PyTrustedOracleArbiterDemandData> {
+        use alkahest_rs::clients::arbiters::TrustedOracleArbiter;
+        use alloy::{hex, sol, sol_types::SolType};
+
+        sol! {
+            struct ArbiterDemand {
+                address oracle;
+                bytes demand;
+            }
+        }
+
+        let data_bytes = hex::decode(escrow_attestation.data.strip_prefix("0x").unwrap_or(&escrow_attestation.data))
+            .map_err(|e| pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to decode data hex: {}", e)))?;
+
+        let arbiter_demand = ArbiterDemand::abi_decode(&data_bytes)
+            .map_err(|e| pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to decode arbiter demand: {}", e)))?;
+
+        let demand_data = TrustedOracleArbiter::DemandData::abi_decode(&arbiter_demand.demand)
+            .map_err(|e| pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to decode demand data: {}", e)))?;
+
+        Ok(crate::clients::oracle::PyTrustedOracleArbiterDemandData::from(demand_data))
+    }
+
+    /// Get escrow attestation and extract demand data in one call
+    pub fn get_escrow_and_demand<'py>(
+        &self,
+        py: Python<'py>,
+        fulfillment: &crate::clients::oracle::PyOracleAttestation,
+    ) -> PyResult<pyo3::Bound<'py, PyAny>> {
+        let attestation_client = self.attestation.clone().ok_or_else(|| {
+            pyo3::PyErr::new::<pyo3::exceptions::PyAttributeError, _>(
+                "Attestation extension is not available in this client",
+            )
+        })?;
+
+        let ref_uid: FixedBytes<32> = fulfillment.ref_uid.parse().map_err(|e| {
+            pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Parse error: {}", e))
+        })?;
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            use alkahest_rs::clients::arbiters::TrustedOracleArbiter;
+            use alloy::{hex, sol, sol_types::SolType};
+
+            sol! {
+                struct ArbiterDemand {
+                    address oracle;
+                    bytes demand;
+                }
+            }
+
+            let escrow: alkahest_rs::contracts::IEAS::Attestation = attestation_client
+                .inner
+                .get_attestation(ref_uid)
+                .await
+                .map_err(|e| pyo3::PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{}", e)))?;
+
+            let data_bytes = hex::decode(format!("0x{}", hex::encode(&escrow.data)).strip_prefix("0x").unwrap())
+                .unwrap_or(escrow.data.to_vec());
+
+            let arbiter_demand = ArbiterDemand::abi_decode(&data_bytes)
+                .map_err(|e| pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to decode arbiter demand: {}", e)))?;
+
+            let demand_data = TrustedOracleArbiter::DemandData::abi_decode(&arbiter_demand.demand)
+                .map_err(|e| pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to decode demand data: {}", e)))?;
+
+            let py_escrow = crate::clients::oracle::PyOracleAttestation::from(&escrow);
+            let py_demand = crate::clients::oracle::PyTrustedOracleArbiterDemandData::from(demand_data);
+
+            Ok((py_escrow, py_demand))
+        })
+    }
+
     #[pyo3(signature = (contract_address, buy_attestation, from_block=None))]
     pub fn wait_for_fulfillment<'py>(
         &self,
@@ -816,16 +445,11 @@ fn alkahest_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<StringObligationClient>()?;
     m.add_class::<OracleClient>()?;
     m.add_class::<PyOracleAddresses>()?;
-    m.add_class::<PyAttestationFilter>()?;
     m.add_class::<PyOracleAttestation>()?;
     m.add_class::<PyDecision>()?;
-    m.add_class::<PyFulfillmentParams>()?;
     m.add_class::<PyArbitrateOptions>()?;
-    m.add_class::<PyArbitrationResult>()?;
-    m.add_class::<PySubscriptionResult>()?;
+    m.add_class::<PyListenResult>()?;
     m.add_class::<PyTrustedOracleArbiterDemandData>()?;
-    m.add_class::<PyEscrowParams>()?;
-    m.add_class::<PyEscrowArbitrationResult>()?;
     m.add_class::<EnvTestManager>()?;
     m.add_class::<PyWalletProvider>()?;
     m.add_class::<PyMockERC20>()?;

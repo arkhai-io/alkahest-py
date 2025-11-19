@@ -1,4 +1,4 @@
-use alkahest_rs::clients::attestation;
+use alkahest_rs::extensions::AttestationModule;
 use alloy::primitives::{Address, FixedBytes};
 use pyo3::{pyclass, pymethods, PyResult};
 
@@ -11,11 +11,11 @@ use crate::{
 #[pyclass]
 #[derive(Clone)]
 pub struct AttestationClient {
-    inner: attestation::AttestationClient,
+    pub(crate) inner: AttestationModule,
 }
 
 impl AttestationClient {
-    pub fn new(inner: attestation::AttestationClient) -> Self {
+    pub fn new(inner: AttestationModule) -> Self {
         Self { inner }
     }
 }
@@ -178,6 +178,23 @@ impl AttestationClient {
                     .into(),
                 transaction_hash: receipt.transaction_hash.to_string(),
             })
+        })
+    }
+
+    /// Get an attestation by its UID
+    pub(crate) fn get_attestation<'py>(
+        &self,
+        py: pyo3::Python<'py>,
+        uid: String,
+    ) -> PyResult<pyo3::Bound<'py, pyo3::PyAny>> {
+        let inner = self.inner.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let uid: FixedBytes<32> = uid.parse().map_err(map_parse_to_pyerr)?;
+            let attestation = inner
+                .get_attestation(uid)
+                .await
+                .map_err(map_eyre_to_pyerr)?;
+            Ok(crate::contract::PyAttestation::from(attestation))
         })
     }
 }

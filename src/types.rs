@@ -208,15 +208,15 @@ impl TryFrom<DefaultExtensionConfig> for alkahest_rs::DefaultExtensionConfig {
 
     fn try_from(value: DefaultExtensionConfig) -> PyResult<Self> {
         Ok(Self {
-            erc20_addresses: value.erc20_addresses.and_then(|x| x.try_into().ok()),
-            erc721_addresses: value.erc721_addresses.and_then(|x| x.try_into().ok()),
-            erc1155_addresses: value.erc1155_addresses.and_then(|x| x.try_into().ok()),
-            token_bundle_addresses: value.token_bundle_addresses.and_then(|x| x.try_into().ok()),
-            attestation_addresses: value.attestation_addresses.and_then(|x| x.try_into().ok()),
-            arbiters_addresses: value.arbiters_addresses.and_then(|x| x.try_into().ok()),
+            erc20_addresses: value.erc20_addresses.and_then(|x| x.try_into().ok()).unwrap_or_default(),
+            erc721_addresses: value.erc721_addresses.and_then(|x| x.try_into().ok()).unwrap_or_default(),
+            erc1155_addresses: value.erc1155_addresses.and_then(|x| x.try_into().ok()).unwrap_or_default(),
+            token_bundle_addresses: value.token_bundle_addresses.and_then(|x| x.try_into().ok()).unwrap_or_default(),
+            attestation_addresses: value.attestation_addresses.and_then(|x| x.try_into().ok()).unwrap_or_default(),
+            arbiters_addresses: value.arbiters_addresses.and_then(|x| x.try_into().ok()).unwrap_or_default(),
             string_obligation_addresses: value
                 .string_obligation_addresses
-                .and_then(|x| x.try_into().ok()),
+                .and_then(|x| x.try_into().ok()).unwrap_or_default(),
         })
     }
 }
@@ -551,28 +551,13 @@ pub struct PyDefaultExtensionConfig {
 impl From<&alkahest_rs::DefaultExtensionConfig> for PyDefaultExtensionConfig {
     fn from(data: &alkahest_rs::DefaultExtensionConfig) -> Self {
         Self {
-            erc20_addresses: data.erc20_addresses.as_ref().map(PyErc20Addresses::from),
-            erc721_addresses: data.erc721_addresses.as_ref().map(PyErc721Addresses::from),
-            erc1155_addresses: data
-                .erc1155_addresses
-                .as_ref()
-                .map(PyErc1155Addresses::from),
-            token_bundle_addresses: data
-                .token_bundle_addresses
-                .as_ref()
-                .map(PyTokenBundleAddresses::from),
-            attestation_addresses: data
-                .attestation_addresses
-                .as_ref()
-                .map(PyAttestationAddresses::from),
-            arbiters_addresses: data
-                .arbiters_addresses
-                .as_ref()
-                .map(PyArbitersAddresses::from),
-            string_obligation_addresses: data
-                .string_obligation_addresses
-                .as_ref()
-                .map(PyStringObligationAddresses::from),
+            erc20_addresses: Some(PyErc20Addresses::from(&data.erc20_addresses)),
+            erc721_addresses: Some(PyErc721Addresses::from(&data.erc721_addresses)),
+            erc1155_addresses: Some(PyErc1155Addresses::from(&data.erc1155_addresses)),
+            token_bundle_addresses: Some(PyTokenBundleAddresses::from(&data.token_bundle_addresses)),
+            attestation_addresses: Some(PyAttestationAddresses::from(&data.attestation_addresses)),
+            arbiters_addresses: Some(PyArbitersAddresses::from(&data.arbiters_addresses)),
+            string_obligation_addresses: Some(PyStringObligationAddresses::from(&data.string_obligation_addresses)),
         }
     }
 }
@@ -692,13 +677,13 @@ pub struct PyArbitersAddresses {
     #[pyo3(get)]
     pub eas: String,
     #[pyo3(get)]
-    pub specific_attestation_arbiter: String,
+    pub trusted_party_arbiter: String,
     #[pyo3(get)]
     pub trivial_arbiter: String,
     #[pyo3(get)]
-    pub trusted_oracle_arbiter: String,
+    pub specific_attestation_arbiter: String,
     #[pyo3(get)]
-    pub trusted_party_arbiter: String,
+    pub trusted_oracle_arbiter: String,
     #[pyo3(get)]
     pub intrinsics_arbiter: String,
     #[pyo3(get)]
@@ -711,22 +696,124 @@ pub struct PyArbitersAddresses {
     pub uid_arbiter: String,
     #[pyo3(get)]
     pub recipient_arbiter: String,
+    #[pyo3(get)]
+    pub not_arbiter: String,
+    #[pyo3(get)]
+    pub attester_arbiter_composing: String,
+    #[pyo3(get)]
+    pub attester_arbiter_non_composing: String,
+    #[pyo3(get)]
+    pub expiration_time_after_arbiter_composing: String,
+    #[pyo3(get)]
+    pub expiration_time_before_arbiter_composing: String,
+    #[pyo3(get)]
+    pub expiration_time_equal_arbiter_composing: String,
+    #[pyo3(get)]
+    pub recipient_arbiter_composing: String,
+    #[pyo3(get)]
+    pub ref_uid_arbiter_composing: String,
+    #[pyo3(get)]
+    pub revocable_arbiter_composing: String,
+    #[pyo3(get)]
+    pub schema_arbiter_composing: String,
+    #[pyo3(get)]
+    pub time_after_arbiter_composing: String,
+    #[pyo3(get)]
+    pub time_before_arbiter_composing: String,
+    #[pyo3(get)]
+    pub time_equal_arbiter_composing: String,
+    #[pyo3(get)]
+    pub uid_arbiter_composing: String,
+    #[pyo3(get)]
+    pub erc20_payment_fulfillment_arbiter: String,
+    #[pyo3(get)]
+    pub erc721_payment_fulfillment_arbiter: String,
+    #[pyo3(get)]
+    pub erc1155_payment_fulfillment_arbiter: String,
+    #[pyo3(get)]
+    pub token_bundle_payment_fulfillment_arbiter: String,
+    #[pyo3(get)]
+    pub expiration_time_after_arbiter_non_composing: String,
+    #[pyo3(get)]
+    pub expiration_time_before_arbiter_non_composing: String,
+    #[pyo3(get)]
+    pub expiration_time_equal_arbiter_non_composing: String,
+    #[pyo3(get)]
+    pub recipient_arbiter_non_composing: String,
+    #[pyo3(get)]
+    pub ref_uid_arbiter_non_composing: String,
+    #[pyo3(get)]
+    pub revocable_arbiter_non_composing: String,
+    #[pyo3(get)]
+    pub schema_arbiter_non_composing: String,
+    #[pyo3(get)]
+    pub time_after_arbiter_non_composing: String,
+    #[pyo3(get)]
+    pub time_before_arbiter_non_composing: String,
+    #[pyo3(get)]
+    pub time_equal_arbiter_non_composing: String,
+    #[pyo3(get)]
+    pub uid_arbiter_non_composing: String,
+    #[pyo3(get)]
+    pub confirmation_arbiter: String,
+    #[pyo3(get)]
+    pub confirmation_arbiter_composing: String,
+    #[pyo3(get)]
+    pub revocable_confirmation_arbiter: String,
+    #[pyo3(get)]
+    pub revocable_confirmation_arbiter_composing: String,
+    #[pyo3(get)]
+    pub unrevocable_confirmation_arbiter: String,
 }
 
 impl From<&alkahest_rs::clients::arbiters::ArbitersAddresses> for PyArbitersAddresses {
     fn from(data: &alkahest_rs::clients::arbiters::ArbitersAddresses) -> Self {
         Self {
             eas: format!("{:?}", data.eas),
-            specific_attestation_arbiter: format!("{:?}", data.specific_attestation_arbiter),
-            trivial_arbiter: format!("{:?}", data.trivial_arbiter),
-            trusted_oracle_arbiter: format!("{:?}", data.trusted_oracle_arbiter),
             trusted_party_arbiter: format!("{:?}", data.trusted_party_arbiter),
+            trivial_arbiter: format!("{:?}", data.trivial_arbiter),
+            specific_attestation_arbiter: format!("{:?}", data.specific_attestation_arbiter),
+            trusted_oracle_arbiter: format!("{:?}", data.trusted_oracle_arbiter),
             intrinsics_arbiter: format!("{:?}", data.intrinsics_arbiter),
             intrinsics_arbiter_2: format!("{:?}", data.intrinsics_arbiter_2),
             any_arbiter: format!("{:?}", data.any_arbiter),
             all_arbiter: format!("{:?}", data.all_arbiter),
             uid_arbiter: format!("{:?}", data.uid_arbiter),
             recipient_arbiter: format!("{:?}", data.recipient_arbiter),
+            not_arbiter: format!("{:?}", data.not_arbiter),
+            attester_arbiter_composing: format!("{:?}", data.attester_arbiter_composing),
+            attester_arbiter_non_composing: format!("{:?}", data.attester_arbiter_non_composing),
+            expiration_time_after_arbiter_composing: format!("{:?}", data.expiration_time_after_arbiter_composing),
+            expiration_time_before_arbiter_composing: format!("{:?}", data.expiration_time_before_arbiter_composing),
+            expiration_time_equal_arbiter_composing: format!("{:?}", data.expiration_time_equal_arbiter_composing),
+            recipient_arbiter_composing: format!("{:?}", data.recipient_arbiter_composing),
+            ref_uid_arbiter_composing: format!("{:?}", data.ref_uid_arbiter_composing),
+            revocable_arbiter_composing: format!("{:?}", data.revocable_arbiter_composing),
+            schema_arbiter_composing: format!("{:?}", data.schema_arbiter_composing),
+            time_after_arbiter_composing: format!("{:?}", data.time_after_arbiter_composing),
+            time_before_arbiter_composing: format!("{:?}", data.time_before_arbiter_composing),
+            time_equal_arbiter_composing: format!("{:?}", data.time_equal_arbiter_composing),
+            uid_arbiter_composing: format!("{:?}", data.uid_arbiter_composing),
+            erc20_payment_fulfillment_arbiter: format!("{:?}", data.erc20_payment_fulfillment_arbiter),
+            erc721_payment_fulfillment_arbiter: format!("{:?}", data.erc721_payment_fulfillment_arbiter),
+            erc1155_payment_fulfillment_arbiter: format!("{:?}", data.erc1155_payment_fulfillment_arbiter),
+            token_bundle_payment_fulfillment_arbiter: format!("{:?}", data.token_bundle_payment_fulfillment_arbiter),
+            expiration_time_after_arbiter_non_composing: format!("{:?}", data.expiration_time_after_arbiter_non_composing),
+            expiration_time_before_arbiter_non_composing: format!("{:?}", data.expiration_time_before_arbiter_non_composing),
+            expiration_time_equal_arbiter_non_composing: format!("{:?}", data.expiration_time_equal_arbiter_non_composing),
+            recipient_arbiter_non_composing: format!("{:?}", data.recipient_arbiter_non_composing),
+            ref_uid_arbiter_non_composing: format!("{:?}", data.ref_uid_arbiter_non_composing),
+            revocable_arbiter_non_composing: format!("{:?}", data.revocable_arbiter_non_composing),
+            schema_arbiter_non_composing: format!("{:?}", data.schema_arbiter_non_composing),
+            time_after_arbiter_non_composing: format!("{:?}", data.time_after_arbiter_non_composing),
+            time_before_arbiter_non_composing: format!("{:?}", data.time_before_arbiter_non_composing),
+            time_equal_arbiter_non_composing: format!("{:?}", data.time_equal_arbiter_non_composing),
+            uid_arbiter_non_composing: format!("{:?}", data.uid_arbiter_non_composing),
+            confirmation_arbiter: format!("{:?}", data.confirmation_arbiter),
+            confirmation_arbiter_composing: format!("{:?}", data.confirmation_arbiter_composing),
+            revocable_confirmation_arbiter: format!("{:?}", data.revocable_confirmation_arbiter),
+            revocable_confirmation_arbiter_composing: format!("{:?}", data.revocable_confirmation_arbiter_composing),
+            unrevocable_confirmation_arbiter: format!("{:?}", data.unrevocable_confirmation_arbiter),
         }
     }
 }
